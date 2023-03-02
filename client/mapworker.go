@@ -3,11 +3,61 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"log"
 	"net"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 )
+
+// Type using Mutex to guarantee mutual exclusion and safe access in
+// critical section, since freqMap will be shared among threads.
+type SafeMap struct {
+	freqMap map[string]int
+	m       *sync.RWMutex
+}
+
+// Given a file name and a SafeMap, reads the file, counts the words in it,
+// and maps the counts to the words in freq.freqMap.
+func multiCountFile(file string, freq SafeMap) {
+	//split string into separate words
+	reg, err := regexp.Compile("[^a-zA-Z0-9]")
+	if err != nil {
+		log.Fatal(err)
+	}
+	//words is a []string of indivdiual words
+	words := strings.Fields(strings.ToLower(reg.ReplaceAllString(string(file), " ")))
+	fmt.Println(words)
+
+	//make a map of wordcounts for words in file
+	for _, w := range words {
+		freq.m.Lock()
+		freq.freqMap[w]++
+		freq.m.Unlock()
+	}
+}
+
+/*
+// Function that creates a thread for each file in the given directory.
+//Given a list of file names as strings, returns the wordcounts of each word in the files
+func multi_threaded_file(files []string) SafeMap {
+	freq := SafeMap{freqMap: make(map[string]int), m: &sync.RWMutex{}}
+	wg := sync.WaitGroup{}
+
+	for i := 0; i < len(files); i++ {
+		wg.Add(1)
+		go func(idx int, freq SafeMap, wg *sync.WaitGroup) {
+			defer wg.Done()
+			multiCountFile(files[idx], freq)
+		}(i, freq, &wg)
+	}
+
+	wg.Wait()
+	return freq
+}
+*/
 
 func main() {
 	arguments := os.Args
@@ -49,7 +99,7 @@ func main() {
 			fmt.Print("->: " + message)
 			//fmt.Fprintf(c, "ok map\n")
 			//c.Write([]byte("ok map\n"))
-			numBytes, err := c.Write([]byte("ok map\n"))
+			numBytes, err := c.Write([]byte("ok map" + "\n"))
 			if err != nil {
 				fmt.Println(err)
 				return
@@ -66,7 +116,16 @@ func main() {
 			if counter > 100 {
 				break
 			} else {
-				fmt.Print("->: " + message)
+				//convert large string into word counts
+				data := SafeMap{freqMap: make(map[string]int), m: &sync.RWMutex{}}
+				multiCountFile(message, data)
+				fmt.Print("->: ")
+				fmt.Print(data.freqMap)
+
+				//send that information over the channel to the server line by line
+				for word, count := range data.freqMap {
+					fmt.Fprintf(c, "%s; %v\n", word, count) //";" is not a word character
+				}
 			}
 
 		}

@@ -8,7 +8,9 @@ import (
 	"net"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
+	"sync"
 )
 
 var count = 0
@@ -21,7 +23,7 @@ type ChunkInfo struct {
 
 // each client served by a separate thread that executes this handleConnection function
 // while one client is served, the server able to interact with other clients
-func handleConnection(c net.Conn, data [10]ChunkInfo) {
+func handleConnection(c net.Conn, data [10]ChunkInfo, collect map[string]int, wg *sync.WaitGroup) {
 	fmt.Print(".")
 	for {
 		fmt.Println("NEW FOR LOOP ITERATION")
@@ -67,7 +69,10 @@ func handleConnection(c net.Conn, data [10]ChunkInfo) {
 			}
 			if allChunksProcessed {
 				c.Write([]byte("done")) //Tell the worker that there are no more chunks to be processed
+				break
 			}
+		} else if temp[0] == '(' { //assume we are recieving data from a mapper
+			collectWorkerOutput(&temp, &collect) //uses pointers so we don't create copies of temp and collect
 		} else {
 			fmt.Println("Unexpected command: " + temp)
 		}
@@ -122,6 +127,17 @@ func divide(files []string) [10]ChunkInfo {
 	return chunks
 }
 
+// update the output map (collect) with a new word count from a worker
+func collectWorkerOutput(tempP *string, collectP *map[string]int) {
+	temp := *tempP
+	collect := *collectP
+	temp = temp[1:]                                               //get rid of '('
+	word := temp[:strings.IndexByte(temp, ';')]                   //the word is before ';'
+	count, _ := strconv.Atoi(temp[strings.IndexByte(temp, ';'):]) //the word count is after ';'
+	//add the count
+	collect[word] += count //collect is initalized with 0 values so we don't need to check if word is in collect
+}
+
 // Given a file name, opens that file and returns an array of bytes.
 // Logs if there is an array opening and reading the file.
 func readFile(filename string) []string {
@@ -135,6 +151,30 @@ func readFile(filename string) []string {
 	}
 	words := strings.Fields(strings.ToLower(reg.ReplaceAllString(string(input), " ")))
 	return words
+}
+
+// Given an array of words, a file name to write to, and count, a hashmap with
+// string keys and integer values, creates a file with the provided name,
+// writes in order the words in the array and the
+// corresponding key value into the file.
+func writeToFile(keys []string, filename string, count map[string]int) {
+	// creating the output file
+	output, err := os.Create(filename)
+	if err != nil {
+		log.Fatal("Error creating file: ", err)
+	}
+
+	defer output.Close()
+
+	writer := bufio.NewWriter(output)
+	for _, k := range keys {
+		_, err := writer.WriteString(k + " " + strconv.Itoa(count[k]) + "\n")
+		if err != nil {
+			log.Fatal("Error writing to file: ", err)
+		}
+	}
+	writer.Flush()
+	output.Close()
 }
 
 func main() {
@@ -161,15 +201,22 @@ func main() {
 	files := getFiles(inputDirectory) //list of names of files in inputDirectory, assuming there are no subfolders
 	//fmt.Println(files)
 	fileChunks := divide(files)
+	var dataCollection map[string]int //Our collector for all worker data
+	wg := sync.WaitGroup{}
+
 	for {
 		c, err := l.Accept()
 		if err != nil {
 			fmt.Println(err)
 			return
 		}
-		go handleConnection(c, fileChunks)
+		wg.Add(1)
+		go handleConnection(c, fileChunks, dataCollection, wg*sync.WaitGroup)
+		defer wg.Done()
 		//need to make sure the filed can be broken up, need to make it multithreaded
 		//similar to dictionary in assign1
 		count++ //counter never decrements if a client leaves?
 	}
+	wg.Wait()
+	writeToFile([]string, "output/multi.txt", dataCollection)
 }
