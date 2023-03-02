@@ -24,14 +24,17 @@ type ChunkInfo struct {
 func handleConnection(c net.Conn, data [10]ChunkInfo) {
 	fmt.Print(".")
 	for {
+		fmt.Println("NEW FOR LOOP ITERATION")
 		netData, err := bufio.NewReader(c).ReadString('\n')
 		if err != nil {
 			fmt.Println(err)
 			return
 		}
+		fmt.Println("netData is: " + netData)
 
 		temp := strings.TrimSpace(string(netData)) //cuts leading and trailing spaces
-		temp = strings.ToUpper(temp)
+		temp = strings.ToLower(temp)
+		fmt.Println("Temp is: " + temp)
 		if temp == "stop" {
 			break
 		} else if temp == "ready" {
@@ -50,15 +53,16 @@ func handleConnection(c net.Conn, data [10]ChunkInfo) {
 			//check to see if any files STILL need processing
 			for _, chunk := range data {
 				if !chunk.processed {
-					allChunksProcessed = false
+					allChunksProcessed = false //when do we update this to true? once the worker sends the data back? would need to use mutex somehow to lock this chunk? but is mutex done on the server or the client end?
 					//convert []string to string
 					var data string = ""
 					for _, word := range chunk.words {
 						data += word
 					}
 					//send the chunk to the worker
-					c.Write([]byte(data)) // can we have a shared file system?
-					break                 //we only want to give this worker 1 chunk
+					//*I think the lock needs to happen here? and unlock once the data is sent back
+					c.Write([]byte(data + "\n")) // can we have a shared file system?
+					break                        // we only want to give this worker 1 chunk
 				}
 			}
 			if allChunksProcessed {
@@ -93,6 +97,7 @@ func getFiles(dir string) []string {
 // Divides one input file into 10 chunks
 // returns an array of 10 pointers
 // each pointer indicates a ChunkInfo tuples containing a bool processed and []string list of words
+// will need to lock the chunk so that other workers dont access it
 func divide(files []string) [10]ChunkInfo {
 	var chunks [10]ChunkInfo     //array of slices
 	words := readFile(files[0])  //*assuming there is only one file in files* Get a list of all the words in the file
@@ -152,7 +157,7 @@ func main() {
 	defer l.Close()
 
 	inputDirectory := arguments[2] //directory where input is stored
-	fmt.Println(inputDirectory)
+	//fmt.Println(inputDirectory)
 	files := getFiles(inputDirectory) //list of names of files in inputDirectory, assuming there are no subfolders
 	//fmt.Println(files)
 	fileChunks := divide(files)
@@ -163,6 +168,8 @@ func main() {
 			return
 		}
 		go handleConnection(c, fileChunks)
+		//need to make sure the filed can be broken up, need to make it multithreaded
+		//similar to dictionary in assign1
 		count++ //counter never decrements if a client leaves?
 	}
 }
