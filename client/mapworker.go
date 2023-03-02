@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -47,14 +48,14 @@ func main() {
 		if message == "map" {
 			fmt.Print("->: " + message)
 			//fmt.Fprintf(c, "ok map\n")
-			c.Write([]byte("ok map\n"))
-			/*gitnumBytes, err := fmt.Fprintf(c, "ok map\n")
+			//c.Write([]byte("ok map\n"))
+			numBytes, err := c.Write([]byte("ok map\n"))
 			if err != nil {
 				fmt.Println(err)
 				return
 			} else {
 				fmt.Println("Printed: " + strconv.Itoa(numBytes))
-			}*/
+			}
 			fmt.Println("I JUST SENT ok map")
 
 		} else if message == "done" {
