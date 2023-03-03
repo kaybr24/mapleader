@@ -23,16 +23,17 @@ type ChunkInfo struct {
 
 // each client served by a separate thread that executes this handleConnection function
 // while one client is served, the server able to interact with other clients
-func handleConnection(c net.Conn, data [10]ChunkInfo, collect map[string]int) { //add wg *sync.WaitGroup
+func handleConnection(c net.Conn, data string, collect map[string]int, workToDo bool) { //add wg *sync.WaitGroup
 	fmt.Print(".")
 	for {
 		fmt.Println("NEW SERVER FOR LOOP ITERATION")
+		fmt.Printf("Do we have work to do?: %t\n", workToDo)
 		netData, err := bufio.NewReader(c).ReadString('\n')
 		if err != nil {
 			fmt.Println(err)
 			return
 		}
-		fmt.Println("netData is: " + netData)
+		fmt.Print("netData is: " + netData)
 
 		temp := strings.TrimSpace(string(netData)) //cuts leading and trailing spaces
 		temp = strings.ToLower(temp)
@@ -40,40 +41,35 @@ func handleConnection(c net.Conn, data [10]ChunkInfo, collect map[string]int) { 
 		if temp == "stop" {
 			break
 		} else if temp == "ready" {
-			//check to see if any files need processing
-			for _, chunk := range data { //an ALL DONE flag would make this more efficient
-				if !chunk.processed {
-					//if there is an unprocessed chunk, send the keyword "map" to the worker
-					fmt.Println("recieved " + temp)
-					c.Write([]byte("map" + "\n"))
-					break //we only want to give this worker 1 chunk
-				}
+			if workToDo { //true if any files need processing
+				//if there is an unprocessed chunk, send the keyword "map" to the worker
+				fmt.Println("recieved " + temp)
+				c.Write([]byte("map" + "\n"))
+				continue
+				//break
+			} else {
+				fmt.Println("SENT DONE after worker said ready")
+				c.Write([]byte("done" + "\n")) //Tell the worker that there are no more chunks to be processed
+				break
 			}
 		} else if temp == "ok map" {
-			fmt.Println("recieved " + temp)
-			allChunksProcessed := true
-			//check to see if any files STILL need processing
-			for _, chunk := range data {
-				if !chunk.processed {
-					allChunksProcessed = false //when do we update this to true? once the worker sends the data back? would need to use mutex somehow to lock this chunk? but is mutex done on the server or the client end?
-					//convert []string to string
-					var data string = ""
-					for _, word := range chunk.words {
-						data += word + " "
-					}
-					//send the chunk to the worker
-					//*I think the lock needs to happen here? and unlock once the data is sent back
-					c.Write([]byte(data + "\n")) // can we have a shared file system?
-					break                        // we only want to give this worker 1 chunk
-				}
-			}
-			if allChunksProcessed {
-				c.Write([]byte("done")) //Tell the worker that there are no more chunks to be processed
-
+			if workToDo {
+				fmt.Println("recieved " + temp)
+				//send the chunk to the worker
+				c.Write([]byte(data + "\n")) // can we have a shared file system?
+				continue
+			} else {
+				fmt.Println("SENT DONE after worker said ok map")
+				c.Write([]byte("done" + "\n")) //Tell the worker that there are no more chunks to be processed
 				break
 			}
 		} else if temp[0] == '(' { //assume we are recieving data from a mapper
 			collectWorkerOutput(&temp, &collect) //uses pointers so we don't create copies of temp and collect
+			continue
+		} else if temp == "finished!" { //the worker tells us they are done
+			fmt.Println("SENT MAP after worker said finished!")
+			c.Write([]byte("map" + "\n")) //Ask the worker if they can do more mapping
+			continue
 		} else {
 			fmt.Println("Unexpected command: " + temp)
 		}
@@ -129,12 +125,31 @@ func divide(files []string) [10]ChunkInfo {
 	return chunks
 }
 
+// Check if there are chunks left to process
+// If there are, return bool false and 1 file chunk
+// If everything is processed, return bool true and empty string
+func isProcessingDone(data [10]ChunkInfo) (bool, string) {
+	//check to see if any files STILL need processing
+	for _, chunk := range data {
+		if !chunk.processed { //if there is an unprocessed chunk
+			//convert []string to string
+			var chunkToSend string = ""
+			for _, word := range chunk.words {
+				chunkToSend += word + " "
+			}
+			//send the chunk to the worker
+			//*I think the lock needs to happen here? and unlock once the data is sent back
+			return false, chunkToSend
+		}
+	}
+	return true, ""
+}
+
 // update the output map (collect) with a new word count from a worker
 func collectWorkerOutput(tempP *string, collectP *map[string]int) {
 	temp := *tempP
-	collect := *collectP
-	temp = temp[1:]                                               //get rid of '('
-	word := temp[:strings.IndexByte(temp, ';')]                   //the word is before ';'
+	collect := *collectP                                          //get rid of '('
+	word := temp[1:strings.IndexByte(temp, ';')]                  //the word is before ';'
 	count, _ := strconv.Atoi(temp[strings.IndexByte(temp, ';'):]) //the word count is after ';'
 	//add the count
 	collect[word] += count //collect is initalized with 0 values so we don't need to check if word is in collect
@@ -225,9 +240,19 @@ func main() {
 			fmt.Println(err)
 			return
 		}
+		//check if we need the worker to process data
+		done, fileChunk := isProcessingDone(fileChunks)
+		if done {
+			//tell the worker "done"
+			fmt.Print("Notifying mapper that all work is done!")
+			go handleConnection(c, fileChunk, dataCollection, done)
+			//write output?
+		} else {
+			go handleConnection(c, fileChunk, dataCollection, !done) //version without waitgroup
+		}
 		//wg.Add(1)
 		//go handleConnection(c, fileChunks, dataCollection, wg*sync.WaitGroup)
-		go handleConnection(c, fileChunks, dataCollection) //version without waitgroup
+
 		//defer wg.Done()
 		//need to make sure the filed can be broken up, need to make it multithreaded
 		//similar to dictionary in assign1

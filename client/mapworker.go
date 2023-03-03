@@ -7,7 +7,6 @@ import (
 	"net"
 	"os"
 	"regexp"
-	"strconv"
 	"strings"
 	"sync"
 )
@@ -29,7 +28,7 @@ func multiCountFile(file string, freq SafeMap) {
 	}
 	//words is a []string of indivdiual words
 	words := strings.Fields(strings.ToLower(reg.ReplaceAllString(string(file), " ")))
-	fmt.Println(words)
+	fmt.Printf("RECIEVED FILE CHUNK: %q\n", words)
 
 	//make a map of wordcounts for words in file
 	for _, w := range words {
@@ -102,15 +101,13 @@ func main() {
 		message = strings.ToLower(message)
 
 		if message == "map" {
-			fmt.Print("did I get map? " + message)
+			fmt.Println("did I get map? " + message)
 			//fmt.Fprintf(c, "ok map\n")
 			//c.Write([]byte("ok map\n"))
-			numBytes, err := c.Write([]byte("ok map" + "\n"))
+			_, err := c.Write([]byte("ok map" + "\n"))
 			if err != nil {
 				fmt.Println(err)
 				return
-			} else {
-				fmt.Println("Printed: " + strconv.Itoa(numBytes))
 			}
 			fmt.Println("I JUST SENT ok map")
 
@@ -123,13 +120,16 @@ func main() {
 			//convert large string into word counts
 			data := SafeMap{freqMap: make(map[string]int), m: &sync.RWMutex{}}
 			multiCountFile(message, data)
-			fmt.Print("->: ")
+			fmt.Print("CREATED MAP OF WORDCOUNTS: ")
 			fmt.Print(data.freqMap)
 
 			//send that information over the channel to the server line by line
 			for word, count := range data.freqMap {
-				fmt.Fprintf(c, "%s; %v\n", word, count) //";" is not a word character
+				fmt.Fprintf(c, "(%s;%v\n", word, count) //";" is not a word character
 			}
+
+			fmt.Fprintf(c, "finished!\n") //tell server that I am done processing this chunk
+			fmt.Println("FINISHED SENDING DATA CHUNK")
 
 		}
 
