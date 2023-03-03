@@ -152,7 +152,7 @@ func collectWorkerOutput(tempP *string, collectP *map[string]int) {
 	word := temp[1:strings.IndexByte(temp, ';')]                  //the word is before ';'
 	count, _ := strconv.Atoi(temp[strings.IndexByte(temp, ';'):]) //the word count is after ';'
 	//add the count
-	collect[word] += count //collect is initalized with 0 values so we don't need to check if word is in collect
+	collect[word] += count
 }
 
 // Given a file name, opens that file and returns an array of bytes.
@@ -231,7 +231,8 @@ func main() {
 	files := getFiles(inputDirectory) //list of names of files in inputDirectory, assuming there are no subfolders
 	//fmt.Println(files)
 	fileChunks := divide(files)
-	var dataCollection map[string]int //Our collector for all worker data
+	var dataCollection map[string]int
+	dataCollection = make(map[string]int) //Our collector for all worker data
 	//wg := sync.WaitGroup{}
 
 	for {
