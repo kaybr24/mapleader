@@ -86,6 +86,7 @@ func main() {
 		text, _ := reader.ReadString('\n') //read the input from os.Stdin, which the user typed input
 		fmt.Fprintf(c, text+"\n")          //formatted print, which basically writes the input to the channel
 		*/
+		fmt.Println("NEW CLIENT FOR LOOP ITERATION")
 		counter += 1
 
 		if !currentlyWorking {
@@ -93,10 +94,15 @@ func main() {
 			currentlyWorking = true
 		}
 		message, _ := bufio.NewReader(c).ReadString('\n') // bufio reads from the channel (c) now, reading the string that ends with and 'enter'
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+		message = message[:len(message)-1]
 		message = strings.ToLower(message)
 
 		if message == "map" {
-			fmt.Print("->: " + message)
+			fmt.Print("did I get map? " + message)
 			//fmt.Fprintf(c, "ok map\n")
 			//c.Write([]byte("ok map\n"))
 			numBytes, err := c.Write([]byte("ok map" + "\n"))
@@ -109,23 +115,20 @@ func main() {
 			fmt.Println("I JUST SENT ok map")
 
 		} else if message == "done" {
-			fmt.Print("->: " + message)
+			fmt.Print("am I done? " + message)
 			fmt.Println("TCP client exiting...")
 			return
 		} else { //otherwise, we assume that message is a chunk*
-			if counter > 100 {
-				break
-			} else {
-				//convert large string into word counts
-				data := SafeMap{freqMap: make(map[string]int), m: &sync.RWMutex{}}
-				multiCountFile(message, data)
-				fmt.Print("->: ")
-				fmt.Print(data.freqMap)
 
-				//send that information over the channel to the server line by line
-				for word, count := range data.freqMap {
-					fmt.Fprintf(c, "%s; %v\n", word, count) //";" is not a word character
-				}
+			//convert large string into word counts
+			data := SafeMap{freqMap: make(map[string]int), m: &sync.RWMutex{}}
+			multiCountFile(message, data)
+			fmt.Print("->: ")
+			fmt.Print(data.freqMap)
+
+			//send that information over the channel to the server line by line
+			for word, count := range data.freqMap {
+				fmt.Fprintf(c, "%s; %v\n", word, count) //";" is not a word character
 			}
 
 		}

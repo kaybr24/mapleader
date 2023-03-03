@@ -8,9 +8,9 @@ import (
 	"net"
 	"os"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
-	"sync"
 )
 
 var count = 0
@@ -23,10 +23,10 @@ type ChunkInfo struct {
 
 // each client served by a separate thread that executes this handleConnection function
 // while one client is served, the server able to interact with other clients
-func handleConnection(c net.Conn, data [10]ChunkInfo, collect map[string]int, wg *sync.WaitGroup) {
+func handleConnection(c net.Conn, data [10]ChunkInfo, collect map[string]int) { //add wg *sync.WaitGroup
 	fmt.Print(".")
 	for {
-		fmt.Println("NEW FOR LOOP ITERATION")
+		fmt.Println("NEW SERVER FOR LOOP ITERATION")
 		netData, err := bufio.NewReader(c).ReadString('\n')
 		if err != nil {
 			fmt.Println(err)
@@ -36,7 +36,7 @@ func handleConnection(c net.Conn, data [10]ChunkInfo, collect map[string]int, wg
 
 		temp := strings.TrimSpace(string(netData)) //cuts leading and trailing spaces
 		temp = strings.ToLower(temp)
-		fmt.Println("Temp is: " + temp)
+		//fmt.Println("Temp is: " + temp)
 		if temp == "stop" {
 			break
 		} else if temp == "ready" {
@@ -59,7 +59,7 @@ func handleConnection(c net.Conn, data [10]ChunkInfo, collect map[string]int, wg
 					//convert []string to string
 					var data string = ""
 					for _, word := range chunk.words {
-						data += word
+						data += word + " "
 					}
 					//send the chunk to the worker
 					//*I think the lock needs to happen here? and unlock once the data is sent back
@@ -69,6 +69,7 @@ func handleConnection(c net.Conn, data [10]ChunkInfo, collect map[string]int, wg
 			}
 			if allChunksProcessed {
 				c.Write([]byte("done")) //Tell the worker that there are no more chunks to be processed
+
 				break
 			}
 		} else if temp[0] == '(' { //assume we are recieving data from a mapper
@@ -77,6 +78,7 @@ func handleConnection(c net.Conn, data [10]ChunkInfo, collect map[string]int, wg
 			fmt.Println("Unexpected command: " + temp)
 		}
 	}
+
 	c.Close()
 }
 
@@ -153,6 +155,19 @@ func readFile(filename string) []string {
 	return words
 }
 
+// Takes as input a hashmap with string keys and integer values and creates,
+// sorts, and returns an array of the hashmap's keys.
+func sortWords(freq map[string]int) []string {
+	words := make([]string, len(freq))
+	i := 0
+	for key := range freq {
+		words[i] = key
+		i += 1
+	}
+	sort.Strings(words)
+	return words
+}
+
 // Given an array of words, a file name to write to, and count, a hashmap with
 // string keys and integer values, creates a file with the provided name,
 // writes in order the words in the array and the
@@ -202,7 +217,7 @@ func main() {
 	//fmt.Println(files)
 	fileChunks := divide(files)
 	var dataCollection map[string]int //Our collector for all worker data
-	wg := sync.WaitGroup{}
+	//wg := sync.WaitGroup{}
 
 	for {
 		c, err := l.Accept()
@@ -210,13 +225,18 @@ func main() {
 			fmt.Println(err)
 			return
 		}
-		wg.Add(1)
-		go handleConnection(c, fileChunks, dataCollection, wg*sync.WaitGroup)
-		defer wg.Done()
+		//wg.Add(1)
+		//go handleConnection(c, fileChunks, dataCollection, wg*sync.WaitGroup)
+		go handleConnection(c, fileChunks, dataCollection) //version without waitgroup
+		//defer wg.Done()
 		//need to make sure the filed can be broken up, need to make it multithreaded
 		//similar to dictionary in assign1
 		count++ //counter never decrements if a client leaves?
+		if count >= 10 {
+			fmt.Println("I am getting to a count of 10")
+			writeToFile(sortWords(dataCollection), "output/results.txt", dataCollection)
+		}
 	}
-	wg.Wait()
-	writeToFile([]string, "output/multi.txt", dataCollection)
+	//wg.Wait()
+
 }
