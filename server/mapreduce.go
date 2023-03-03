@@ -50,7 +50,7 @@ func handleConnection(c net.Conn, data string, collect map[string]int, workToDo 
 			} else {
 				fmt.Println("SENT DONE after worker said ready")
 				c.Write([]byte("done" + "\n")) //Tell the worker that there are no more chunks to be processed
-				break
+				//break
 			}
 		} else if temp == "ok map" {
 			if workToDo {
@@ -65,7 +65,7 @@ func handleConnection(c net.Conn, data string, collect map[string]int, workToDo 
 			}
 		} else if temp[0] == '(' { //assume we are recieving data from a mapper
 			collectWorkerOutput(&temp, &collect) //uses pointers so we don't create copies of temp and collect
-			continue
+			//continue
 		} else if temp == "finished!" { //the worker tells us they are done
 			fmt.Println("SENT MAP after worker said finished!")
 			c.Write([]byte("map" + "\n")) //Ask the worker if they can do more mapping
@@ -242,6 +242,9 @@ func main() {
 			return
 		}
 		//check if we need the worker to process data
+		//idea: all code in handleConnection, keep a global? var that is last index checked -> start val of -1
+		//every time need to send a chunk, increment by 1, and then use that nest chunk at that index as the chunk t be sent
+		//get rid of continues, get rid of breaks from server
 		done, fileChunk := isProcessingDone(fileChunks)
 		if done {
 			//tell the worker "done"
