@@ -14,8 +14,6 @@ import (
 	"sync"
 )
 
-var count = 0
-
 // track the index of the data chunk that needs to be processed next
 // Assuming there are no faults, this is also the number of data chunks which have already been processed
 type safeIndex struct {
@@ -60,7 +58,7 @@ func handleConnection(c net.Conn, ALLdata [10][]string, collect map[string]int) 
 		var workToDo bool
 		var currInd int
 		lastIndexProcessed.m.Lock()
-		workToDo = lastIndexProcessed.index < 10
+		workToDo = lastIndexProcessed.index < 9
 		currInd = lastIndexProcessed.index
 		lastIndexProcessed.m.Unlock()
 		fmt.Printf("Do we have work to do?: %t, it is chunk #%v\n", workToDo, currInd)
@@ -87,7 +85,7 @@ func handleConnection(c net.Conn, ALLdata [10][]string, collect map[string]int) 
 			} else {
 				fmt.Println("SENT DONE after worker said ready")
 				c.Write([]byte("done" + "\n")) //Tell the worker that there are no more chunks to be processed
-				//break
+				break
 			}
 		} else if temp == "ok map" {
 			if workToDo {
@@ -98,10 +96,10 @@ func handleConnection(c net.Conn, ALLdata [10][]string, collect map[string]int) 
 			} else {
 				fmt.Println("SENT DONE after worker said ok map")
 				c.Write([]byte("done" + "\n")) //Tell the worker that there are no more chunks to be processed
-				//break
+				break
 			}
 		} else if temp[0] == '(' { //assume we are recieving data from a mapper
-			collectWorkerOutput(&temp, &collect) //uses pointers so we don't create copies of temp and collect
+			collectWorkerOutput_bymap(&temp, &collect) //uses pointers so we don't create copies of temp and collect
 			//continue
 		} else if temp == "finished!" { //the worker tells us they are done
 			fmt.Println("SENT NEW MAP after worker said finished!")
@@ -112,6 +110,7 @@ func handleConnection(c net.Conn, ALLdata [10][]string, collect map[string]int) 
 	}
 
 	c.Close()
+	fmt.Println("---> CLOSED CLIENT CONNECTION")
 }
 
 // getfiles takes as input a path to a directory in the form of a string and
@@ -219,8 +218,37 @@ func sliceToString(dataSlice []string) string {
 	return dataString
 }
 
+// convert a string into a list of words
+// letters and numbers are seen as word characters; everything else is a spacer
+func breakIntoWords(inputP *string) []string {
+	input := *inputP
+	reg, err := regexp.Compile("[^a-zA-Z0-9]")
+	if err != nil {
+		log.Fatal(err)
+	}
+	words := strings.Fields(strings.ToLower(reg.ReplaceAllString(string(input), " ")))
+	return words
+}
+
 // update the output map (collect) with a new word count from a worker
-func collectWorkerOutput(tempP *string, collectP *map[string]int) {
+// collects worker output as one giant map string
+func collectWorkerOutput_bymap(tempP *string, collectP *map[string]int) {
+	collect := *collectP //get rid of '('
+	wordsList := breakIntoWords(tempP)
+	println(wordsList[:10])
+	for i := 0; i < len(wordsList); i += 2 {
+		word := wordsList[i]
+		count, _ := strconv.Atoi(wordsList[i+1])
+		//add the information
+		collect[word] += count
+	}
+
+}
+
+/*
+// update the output map (collect) with a new word count from a worker
+// collects worker output line by line
+func collectWorkerOutput_byline(tempP *string, collectP *map[string]int) {
 	temp := *tempP
 	collect := *collectP                                          //get rid of '('
 	word := temp[1:strings.IndexByte(temp, ';')]                  //the word is before ';'
@@ -228,6 +256,7 @@ func collectWorkerOutput(tempP *string, collectP *map[string]int) {
 	//add the count
 	collect[word] += count
 }
+*/
 
 // Given a file name, opens that file and returns an array of bytes.
 // Logs if there is an array opening and reading the file.
@@ -309,6 +338,17 @@ func main() {
 	//wg := sync.WaitGroup{}
 
 	for {
+		//If all chunks have ben processed, print the results
+		lastIndexProcessed.m.Lock()
+		currentChunk := lastIndexProcessed.index
+		lastIndexProcessed.m.Unlock()
+		fmt.Printf("--> chunk#%v\n", currentChunk)
+		if currentChunk >= 9 {
+			fmt.Println("I am getting to an index count of 9")
+			writeToFile(sortWords(dataCollection), "output/results.txt", dataCollection)
+		}
+
+		//Look for clients that want to connect
 		c, err := l.Accept()
 		if err != nil {
 			fmt.Println(err)
@@ -338,17 +378,7 @@ func main() {
 		//defer wg.Done()
 		//need to make sure the filed can be broken up, need to make it multithreaded
 		//similar to dictionary in assign1
-		count++ //counter never decrements if a client leaves?
 
-		//If all chunks have ben processed, print the results
-		lastIndexProcessed.m.Lock()
-		currentChunk := lastIndexProcessed.index
-		lastIndexProcessed.m.Unlock()
-
-		if currentChunk >= 10 {
-			fmt.Println("I am getting to a count of 10")
-			writeToFile(sortWords(dataCollection), "output/results.txt", dataCollection)
-		}
 	}
 	//wg.Wait()
 

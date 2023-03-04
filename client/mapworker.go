@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 )
@@ -102,8 +103,12 @@ func main() {
 			fmt.Println(err)
 			return
 		}
-		message = message[:len(message)-1] //remove new line
-		message = strings.ToLower(message)
+		if len(message) > 1 {
+			message = message[:len(message)-1] //remove new line
+			message = strings.ToLower(message)
+		} else {
+			fmt.Printf("-> I should NOT have recieved :%s", message)
+		}
 
 		if message == "map" {
 			fmt.Println("did I get map? " + message)
@@ -117,7 +122,7 @@ func main() {
 			fmt.Println("I JUST SENT ok map")
 
 		} else if message == "done" {
-			fmt.Print("am I done? " + message)
+			fmt.Println("am I done? " + message)
 			fmt.Println("TCP client exiting...")
 			return
 		} else { //otherwise, we assume that message is a chunk*
@@ -128,10 +133,13 @@ func main() {
 			fmt.Println("CREATED MAP OF WORDCOUNTS: ")
 			//fmt.Print(data.freqMap)
 
-			//send that information over the channel to the server line by line
+			//send that information over the channel to the server as one giant string
+			var mapToSend string
 			for word, count := range data.freqMap {
-				fmt.Fprintf(c, "(%s;%v\n", word, count) //";" is not a word character
+				//fmt.Fprintf(c, "(%s;%v\n", word, count) //";" is not a word character
+				mapToSend += "(" + word + ";" + strconv.Itoa(count)
 			}
+			fmt.Fprintf(c, mapToSend+"\n")
 
 			fmt.Fprintf(c, "finished!\n") //tell server that I am done processing this chunk
 			currentlyWorking = false
