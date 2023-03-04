@@ -41,11 +41,12 @@ func getData(ALLdata [10][]string) string {
 	//MUTEX
 	lastIndexProcessed.m.Lock()
 	lastIndexProcessed.index += 1 //assume that the data will be processed perfectly from here on out
+	i := lastIndexProcessed.index
 	lastIndexProcessed.m.Unlock()
 	//MUTEX
 	var chunk string
-	if lastIndexProcessed.index < 10 {
-		chunk = sliceToString(ALLdata[lastIndexProcessed.index])
+	if i < 10 {
+		chunk = sliceToString(ALLdata[i])
 	}
 	return chunk
 }
@@ -103,7 +104,7 @@ func handleConnection(c net.Conn, ALLdata [10][]string, collect map[string]int) 
 			collectWorkerOutput(&temp, &collect) //uses pointers so we don't create copies of temp and collect
 			//continue
 		} else if temp == "finished!" { //the worker tells us they are done
-			fmt.Println("SENT MAP after worker said finished!")
+			fmt.Println("SENT NEW MAP after worker said finished!")
 			c.Write([]byte("map" + "\n")) //Ask the worker if they can do more mapping
 		} else {
 			fmt.Println("Unexpected command: " + temp)
@@ -338,7 +339,13 @@ func main() {
 		//need to make sure the filed can be broken up, need to make it multithreaded
 		//similar to dictionary in assign1
 		count++ //counter never decrements if a client leaves?
-		if count >= 10 {
+
+		//If all chunks have ben processed, print the results
+		lastIndexProcessed.m.Lock()
+		currentChunk := lastIndexProcessed.index
+		lastIndexProcessed.m.Unlock()
+
+		if currentChunk >= 10 {
 			fmt.Println("I am getting to a count of 10")
 			writeToFile(sortWords(dataCollection), "output/results.txt", dataCollection)
 		}
