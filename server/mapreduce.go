@@ -14,14 +14,21 @@ import (
 	"sync"
 )
 
+// Type using Mutex to guarantee mutual exclusion and safe access in
+// critical section, since dataCollection will be shared among threads.
+type SafeMap struct {
+	countsMap map[string]int
+	m         *sync.RWMutex
+}
+
 // track the index of the data chunk that needs to be processed next
 // Assuming there are no faults, this is also the number of data chunks which have already been processed
-type safeIndex struct {
+type SafeIndex struct {
 	index int
 	m     *sync.RWMutex
 }
 
-var lastIndexProcessed = safeIndex{index: -1, m: &sync.RWMutex{}}
+var lastIndexProcessed = SafeIndex{index: -1, m: &sync.RWMutex{}}
 
 //var lastIndexProcessed = -1
 
@@ -51,7 +58,7 @@ func getData(ALLdata [10][]string) string {
 
 // each client served by a separate thread that executes this handleConnection function
 // while one client is served, the server able to interact with other clients
-func handleConnection(c net.Conn, ALLdata [10][]string, collect map[string]int) { //add wg *sync.WaitGroup
+func handleConnection(c net.Conn, ALLdata [10][]string, collect SafeMap) { //add wg *sync.WaitGroup
 	fmt.Print(".")
 	for {
 		fmt.Println("NEW SERVER FOR LOOP ITERATION")
@@ -232,7 +239,7 @@ func breakIntoWords(inputP *string) []string {
 
 // update the output map (collect) with a new word count from a worker
 // collects worker output as one giant map string
-func collectWorkerOutput_bymap(tempP *string, collectP *map[string]int) {
+func collectWorkerOutput_bymap(tempP *string, collectP *SafeMap) {
 	collect := *collectP //get rid of '('
 	wordsList := breakIntoWords(tempP)
 	println(wordsList[:10])
@@ -240,7 +247,9 @@ func collectWorkerOutput_bymap(tempP *string, collectP *map[string]int) {
 		word := wordsList[i]
 		count, _ := strconv.Atoi(wordsList[i+1])
 		//add the information
-		collect[word] += count
+		collect.m.Lock()
+		collect.countsMap[word] += count
+		collect.m.Unlock()
 	}
 
 }
@@ -333,8 +342,9 @@ func main() {
 	//fmt.Println(inputDirectory)
 	files := getFiles(inputDirectory) //list of names of files in inputDirectory, assuming there are no subfolders
 	//fmt.Println(files)
-	fileChunks := divide(files)            //returns [10][]string
-	dataCollection := make(map[string]int) //Our collector for all worker data
+	fileChunks := divide(files)                                                    //returns [10][]string
+	dataCollection := SafeMap{countsMap: make(map[string]int), m: &sync.RWMutex{}} //Our collector for all worker data
+	//dataCollection := make(map[string]int) //Our collector for all worker data
 	//wg := sync.WaitGroup{}
 
 	for {
@@ -345,7 +355,7 @@ func main() {
 		fmt.Printf("--> chunk#%v\n", currentChunk)
 		if currentChunk >= 9 {
 			fmt.Println("I am getting to an index count of 9")
-			writeToFile(sortWords(dataCollection), "output/results.txt", dataCollection)
+			writeToFile(sortWords(dataCollection.countsMap), "output/results.txt", dataCollection.countsMap)
 		}
 
 		//Look for clients that want to connect
