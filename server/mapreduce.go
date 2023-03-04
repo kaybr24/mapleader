@@ -78,7 +78,7 @@ func handleConnection(c net.Conn, ALLdata [10][]string, collect map[string]int) 
 		if temp == "stop" {
 			break
 		} else if temp == "ready" {
-			if lastIndexProcessed.index < 10 { //true if any files need processing
+			if workToDo { //true if any files need processing
 				//if there is an unprocessed chunk, send the keyword "map" to the worker
 				fmt.Println("recieved " + temp)
 				c.Write([]byte("map" + "\n"))
@@ -89,7 +89,7 @@ func handleConnection(c net.Conn, ALLdata [10][]string, collect map[string]int) 
 				//break
 			}
 		} else if temp == "ok map" {
-			if lastIndexProcessed.index < 10 {
+			if workToDo {
 				fmt.Println("recieved " + temp)
 				//send the chunk to the worker
 				data := getData(ALLdata)
