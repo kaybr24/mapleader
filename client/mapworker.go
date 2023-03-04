@@ -28,7 +28,12 @@ func multiCountFile(file string, freq SafeMap) {
 	}
 	//words is a []string of indivdiual words
 	words := strings.Fields(strings.ToLower(reg.ReplaceAllString(string(file), " ")))
-	fmt.Printf("RECIEVED FILE CHUNK: %q\n", words)
+	//Did we get some words?
+	arbitraryNumber := 10
+	if len(words) < 10 {
+		arbitraryNumber = len(words)
+	}
+	fmt.Printf("RECIEVED FILE CHUNK: %q\n", words[0:arbitraryNumber])
 
 	//make a map of wordcounts for words in file
 	for _, w := range words {
@@ -97,7 +102,7 @@ func main() {
 			fmt.Println(err)
 			return
 		}
-		message = message[:len(message)-1]
+		message = message[:len(message)-1] //remove new line
 		message = strings.ToLower(message)
 
 		if message == "map" {
@@ -120,8 +125,8 @@ func main() {
 			//convert large string into word counts
 			data := SafeMap{freqMap: make(map[string]int), m: &sync.RWMutex{}}
 			multiCountFile(message, data)
-			fmt.Print("CREATED MAP OF WORDCOUNTS: ")
-			fmt.Print(data.freqMap)
+			fmt.Println("CREATED MAP OF WORDCOUNTS: ")
+			//fmt.Print(data.freqMap)
 
 			//send that information over the channel to the server line by line
 			for word, count := range data.freqMap {

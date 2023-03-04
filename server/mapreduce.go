@@ -11,23 +11,60 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 var count = 0
 
+// track the index of the data chunk that needs to be processed next
+// Assuming there are no faults, this is also the number of data chunks which have already been processed
+type safeIndex struct {
+	index int
+	m     *sync.RWMutex
+}
+
+var lastIndexProcessed = safeIndex{index: -1, m: &sync.RWMutex{}}
+
+//var lastIndexProcessed = -1
+
+/*
 // Keeps track of where a chunk of words have been processed and a slice of the words themselves
 type ChunkInfo struct {
 	processed bool     //Has this chunk been processed?
 	words     []string //words to process
 }
+*/
+
+// given the whole divided input data, return the next tenth as a string
+// if all data has been processed, returns ""
+func getData(ALLdata [10][]string) string {
+	//MUTEX
+	lastIndexProcessed.m.Lock()
+	lastIndexProcessed.index += 1 //assume that the data will be processed perfectly from here on out
+	lastIndexProcessed.m.Unlock()
+	//MUTEX
+	var chunk string
+	if lastIndexProcessed.index < 10 {
+		chunk = sliceToString(ALLdata[lastIndexProcessed.index])
+	}
+	return chunk
+}
 
 // each client served by a separate thread that executes this handleConnection function
 // while one client is served, the server able to interact with other clients
-func handleConnection(c net.Conn, data string, collect map[string]int, workToDo bool) { //add wg *sync.WaitGroup
+func handleConnection(c net.Conn, ALLdata [10][]string, collect map[string]int) { //add wg *sync.WaitGroup
 	fmt.Print(".")
 	for {
 		fmt.Println("NEW SERVER FOR LOOP ITERATION")
-		fmt.Printf("Do we have work to do?: %t\n", workToDo)
+		var workToDo bool
+		var currInd int
+		lastIndexProcessed.m.Lock()
+		workToDo = lastIndexProcessed.index < 10
+		currInd = lastIndexProcessed.index
+		lastIndexProcessed.m.Unlock()
+		fmt.Printf("Do we have work to do?: %t, it is chunk #%v\n", workToDo, currInd)
+
+		//read in data from the channel
 		netData, err := bufio.NewReader(c).ReadString('\n')
 		if err != nil {
 			fmt.Println(err)
@@ -41,11 +78,10 @@ func handleConnection(c net.Conn, data string, collect map[string]int, workToDo 
 		if temp == "stop" {
 			break
 		} else if temp == "ready" {
-			if workToDo { //true if any files need processing
+			if lastIndexProcessed.index < 10 { //true if any files need processing
 				//if there is an unprocessed chunk, send the keyword "map" to the worker
 				fmt.Println("recieved " + temp)
 				c.Write([]byte("map" + "\n"))
-				continue
 				//break
 			} else {
 				fmt.Println("SENT DONE after worker said ready")
@@ -53,15 +89,15 @@ func handleConnection(c net.Conn, data string, collect map[string]int, workToDo 
 				//break
 			}
 		} else if temp == "ok map" {
-			if workToDo {
+			if lastIndexProcessed.index < 10 {
 				fmt.Println("recieved " + temp)
 				//send the chunk to the worker
+				data := getData(ALLdata)
 				c.Write([]byte(data + "\n")) // can we have a shared file system?
-				continue
 			} else {
 				fmt.Println("SENT DONE after worker said ok map")
 				c.Write([]byte("done" + "\n")) //Tell the worker that there are no more chunks to be processed
-				break
+				//break
 			}
 		} else if temp[0] == '(' { //assume we are recieving data from a mapper
 			collectWorkerOutput(&temp, &collect) //uses pointers so we don't create copies of temp and collect
@@ -69,7 +105,6 @@ func handleConnection(c net.Conn, data string, collect map[string]int, workToDo 
 		} else if temp == "finished!" { //the worker tells us they are done
 			fmt.Println("SENT MAP after worker said finished!")
 			c.Write([]byte("map" + "\n")) //Ask the worker if they can do more mapping
-			continue
 		} else {
 			fmt.Println("Unexpected command: " + temp)
 		}
@@ -98,6 +133,30 @@ func getFiles(dir string) []string {
 }
 
 // Divides one input file into 10 chunks
+// returns an array of 10 pointers to sgements of data.  Chunks are stored as type string
+// will need to lock the chunk so that other workers dont access it
+func divide(files []string) [10][]string {
+	var chunks [10][]string      //array of string slices
+	words := readFile(files[0])  //*assuming there is only one file in files* Get a list of all the words in the file
+	totalWords := len(words)     //total number of words in input
+	chunkSize := totalWords / 10 //expected number of words per chunk
+	//*The last mapper may have nearly twice as much work as other mappers (uneven split)
+	for i := 0; i < 9; i++ { //loop 10 times
+		if len(words[i*chunkSize]) > 0 { //just in case we have a very small input file
+			info := words[i*chunkSize : (i+1)*chunkSize]
+			chunks[i] = info
+		}
+
+	}
+	//for the remainder
+	info := words[9*chunkSize:]
+	chunks[9] = info
+	//now we have 10 chunks of words
+	return chunks
+}
+
+/*
+// Divides one input file into 10 chunks
 // returns an array of 10 pointers
 // each pointer indicates a ChunkInfo tuples containing a bool processed and []string list of words
 // will need to lock the chunk so that other workers dont access it
@@ -124,7 +183,9 @@ func divide(files []string) [10]ChunkInfo {
 	//now we have 10 chunks of words
 	return chunks
 }
+*/
 
+/*
 // Check if there are chunks left to process
 // If there are, return bool false and 1 file chunk
 // If everything is processed, return bool true and empty string
@@ -143,6 +204,18 @@ func isProcessingDone(data [10]ChunkInfo) (bool, string) {
 		}
 	}
 	return true, ""
+}
+*/
+
+// takes []string of words with no spaces
+// returns same data as type string (words are separated by spaces)
+// enables sending data over the channel
+func sliceToString(dataSlice []string) string {
+	var dataString string
+	for _, word := range dataSlice {
+		dataString += word + " " //append the next word, separated by spaces
+	}
+	return dataString
 }
 
 // update the output map (collect) with a new word count from a worker
@@ -230,9 +303,8 @@ func main() {
 	//fmt.Println(inputDirectory)
 	files := getFiles(inputDirectory) //list of names of files in inputDirectory, assuming there are no subfolders
 	//fmt.Println(files)
-	fileChunks := divide(files)
-	var dataCollection map[string]int
-	dataCollection = make(map[string]int) //Our collector for all worker data
+	fileChunks := divide(files)            //returns [10][]string
+	dataCollection := make(map[string]int) //Our collector for all worker data
 	//wg := sync.WaitGroup{}
 
 	for {
@@ -241,19 +313,24 @@ func main() {
 			fmt.Println(err)
 			return
 		}
+		//create a new thread to handle that client
+		go handleConnection(c, fileChunks, dataCollection)
+
 		//check if we need the worker to process data
 		//idea: all code in handleConnection, keep a global? var that is last index checked -> start val of -1
 		//every time need to send a chunk, increment by 1, and then use that nest chunk at that index as the chunk t be sent
 		//get rid of continues, get rid of breaks from server
-		done, fileChunk := isProcessingDone(fileChunks)
-		if done {
-			//tell the worker "done"
-			fmt.Print("Notifying mapper that all work is done!")
-			go handleConnection(c, fileChunk, dataCollection, done)
-			//write output?
-		} else {
-			go handleConnection(c, fileChunk, dataCollection, !done) //version without waitgroup
-		}
+		/*
+			done, fileChunk := isProcessingDone(fileChunks)
+			if done {
+				//tell the worker "done"
+				fmt.Print("Notifying mapper that all work is done!")
+				go handleConnection(c, fileChunk, dataCollection, done)
+				//write output?
+			} else {
+				go handleConnection(c, fileChunk, dataCollection, !done) //version without waitgroup
+			}
+		*/
 		//wg.Add(1)
 		//go handleConnection(c, fileChunks, dataCollection, wg*sync.WaitGroup)
 
