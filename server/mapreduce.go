@@ -93,17 +93,17 @@ func handleConnection(c net.Conn, ALLdata [10][]string, collectP *SafeMap) { //a
 			} else {
 				fmt.Println("SENT DONE after worker said ready")
 				c.Write([]byte("done" + "\n")) //Tell the worker that there are no more chunks to be processed
-				if currInd == 9 {
-					//If all chunks have ben processed, print the results
-					lastIndexProcessed.m.Lock()
-					currentChunk := lastIndexProcessed.index
-					lastIndexProcessed.m.Unlock()
-					fmt.Printf("--> chunk#%v\n", currentChunk)
-					if currentChunk >= 9 {
-						fmt.Println("I am getting to an index count of 9")
-						writeToFile(sortWords(collect.countsMap), "output/results.txt", collect.countsMap)
-					}
-				}
+				//if currInd == 9 {
+				//If all chunks have ben processed, print the results
+				lastIndexProcessed.m.Lock()
+				currentChunk := lastIndexProcessed.index
+				lastIndexProcessed.m.Unlock()
+				fmt.Printf("--> chunk#%v\n", currentChunk)
+				//if currentChunk >= 9 {
+				fmt.Println("I am getting to an index count of 9")
+				writeToFile(sortWords(collect.countsMap), "output/results.txt", collect.countsMap)
+				//	}
+				//}
 				break
 			}
 		} else if temp == "ok map" {
@@ -131,9 +131,9 @@ func handleConnection(c net.Conn, ALLdata [10][]string, collectP *SafeMap) { //a
 		} else if temp[0] == '(' { //assume we are recieving data from a mapper
 			collectWorkerOutput_bymap(&temp, &collect) //uses pointers so we don't create copies of temp and collect
 			//continue
-		} else if temp == "finished!" { //the worker tells us they are done
+			/*} else if temp == "finished!" { //the worker tells us they are done
 			fmt.Println("SENT NEW MAP after worker said finished!")
-			c.Write([]byte("map" + "\n")) //Ask the worker if they can do more mapping
+			c.Write([]byte("map" + "\n")) //Ask the worker if they can do more mapping */
 		} else {
 			fmt.Println("Unexpected command: " + temp)
 		}

@@ -141,7 +141,7 @@ func main() {
 			}
 			fmt.Fprintf(c, mapToSend+"\n")
 
-			fmt.Fprintf(c, "finished!\n") //tell server that I am done processing this chunk
+			fmt.Fprintf(c, "ready\n") //tell server that I am done processing this chunk
 			currentlyWorking = false
 			fmt.Println("FINISHED SENDING DATA CHUNK")
 
