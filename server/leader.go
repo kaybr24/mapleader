@@ -53,7 +53,7 @@ func handleConnection(c net.Conn, ALLdata [10][]string, collectP *SafeMap) { //a
 	collect := *collectP
 	var numDONE = SafeIndex{index: 0, m: &sync.RWMutex{}} //tracks the number of clients that have finished processing data
 	for {
-		fmt.Println("NEW SERVER FOR LOOP ITERATION")
+		fmt.Print("\nNEW SERVER FOR LOOP ITERATION\n")
 		var workToDo bool
 		var currInd int
 		//do any more chunks need to be sent to workers?
@@ -76,7 +76,7 @@ func handleConnection(c net.Conn, ALLdata [10][]string, collectP *SafeMap) { //a
 		if len(netData) >= 15 {
 			fmt.Println("netData is: " + netData[:15] + "...")
 		} else {
-			fmt.Println("netData is: " + netData)
+			fmt.Print("netData is: " + netData)
 		}
 
 		temp := strings.TrimSpace(string(netData)) //cuts leading and trailing spaces
