@@ -58,8 +58,9 @@ func getData(ALLdata [10][]string) string {
 
 // each client served by a separate thread that executes this handleConnection function
 // while one client is served, the server able to interact with other clients
-func handleConnection(c net.Conn, ALLdata [10][]string, collect SafeMap) { //add wg *sync.WaitGroup
+func handleConnection(c net.Conn, ALLdata [10][]string, collectP *SafeMap) { //add wg *sync.WaitGroup
 	fmt.Print(".")
+	collect := *collectP
 	for {
 		fmt.Println("NEW SERVER FOR LOOP ITERATION")
 		var workToDo bool
@@ -92,6 +93,17 @@ func handleConnection(c net.Conn, ALLdata [10][]string, collect SafeMap) { //add
 			} else {
 				fmt.Println("SENT DONE after worker said ready")
 				c.Write([]byte("done" + "\n")) //Tell the worker that there are no more chunks to be processed
+				if currInd == 9 {
+					//If all chunks have ben processed, print the results
+					lastIndexProcessed.m.Lock()
+					currentChunk := lastIndexProcessed.index
+					lastIndexProcessed.m.Unlock()
+					fmt.Printf("--> chunk#%v\n", currentChunk)
+					if currentChunk >= 9 {
+						fmt.Println("I am getting to an index count of 9")
+						writeToFile(sortWords(collect.countsMap), "output/results.txt", collect.countsMap)
+					}
+				}
 				break
 			}
 		} else if temp == "ok map" {
@@ -103,6 +115,17 @@ func handleConnection(c net.Conn, ALLdata [10][]string, collect SafeMap) { //add
 			} else {
 				fmt.Println("SENT DONE after worker said ok map")
 				c.Write([]byte("done" + "\n")) //Tell the worker that there are no more chunks to be processed
+				if currInd == 9 {
+					//If all chunks have ben processed, print the results
+					lastIndexProcessed.m.Lock()
+					currentChunk := lastIndexProcessed.index
+					lastIndexProcessed.m.Unlock()
+					fmt.Printf("--> chunk#%v\n", currentChunk)
+					if currentChunk >= 9 {
+						fmt.Println("I am getting to an index count of 9")
+						writeToFile(sortWords(collect.countsMap), "output/results.txt", collect.countsMap)
+					}
+				}
 				break
 			}
 		} else if temp[0] == '(' { //assume we are recieving data from a mapper
@@ -348,15 +371,17 @@ func main() {
 	//wg := sync.WaitGroup{}
 
 	for {
-		//If all chunks have ben processed, print the results
-		lastIndexProcessed.m.Lock()
-		currentChunk := lastIndexProcessed.index
-		lastIndexProcessed.m.Unlock()
-		fmt.Printf("--> chunk#%v\n", currentChunk)
-		if currentChunk >= 9 {
-			fmt.Println("I am getting to an index count of 9")
-			writeToFile(sortWords(dataCollection.countsMap), "output/results.txt", dataCollection.countsMap)
-		}
+		/*
+			//If all chunks have ben processed, print the results
+			lastIndexProcessed.m.Lock()
+			currentChunk := lastIndexProcessed.index
+			lastIndexProcessed.m.Unlock()
+			fmt.Printf("--> chunk#%v\n", currentChunk)
+			if currentChunk >= 9 {
+				fmt.Println("I am getting to an index count of 9")
+				writeToFile(sortWords(dataCollection.countsMap), "output/results.txt", dataCollection.countsMap)
+			}
+		*/
 
 		//Look for clients that want to connect
 		c, err := l.Accept()
@@ -365,7 +390,7 @@ func main() {
 			return
 		}
 		//create a new thread to handle that client
-		go handleConnection(c, fileChunks, dataCollection)
+		go handleConnection(c, fileChunks, &dataCollection)
 
 		//check if we need the worker to process data
 		//idea: all code in handleConnection, keep a global? var that is last index checked -> start val of -1
