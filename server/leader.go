@@ -51,16 +51,21 @@ func getData(ALLdata [10][]string) string {
 func handleConnection(c net.Conn, ALLdata [10][]string, collectP *SafeMap) { //add wg *sync.WaitGroup
 	fmt.Print(".")
 	collect := *collectP
-	numDONE := 0 //tracks the number of clients that have finished processing data
+	var numDONE = SafeIndex{index: 0, m: &sync.RWMutex{}} //tracks the number of clients that have finished processing data
 	for {
 		fmt.Println("NEW SERVER FOR LOOP ITERATION")
 		var workToDo bool
 		var currInd int
+		//do any more chunks need to be sent to workers?
 		lastIndexProcessed.m.Lock()
 		workToDo = lastIndexProcessed.index < 9
 		currInd = lastIndexProcessed.index
 		lastIndexProcessed.m.Unlock()
 		fmt.Printf("Do we have work to do?: %t, it is chunk #%v\n", workToDo, currInd)
+		//Have the workers finished processing every chunk?
+		numDONE.m.Lock()
+		readyToPrint := numDONE.index == 10 // bool tracking whether all chunks have been processed by workers
+		numDONE.m.Unlock()
 
 		//read in data from the channel
 		netData, err := bufio.NewReader(c).ReadString('\n')
@@ -88,7 +93,7 @@ func handleConnection(c net.Conn, ALLdata [10][]string, collectP *SafeMap) { //a
 			} else {
 				fmt.Println("SENT DONE after worker said ready")
 				c.Write([]byte("done" + "\n")) //Tell the worker that there are no more chunks to be processed
-				if numDONE == 10 {             //If data has been recieved from all ten chunks:
+				if readyToPrint {              //If data has been recieved from all ten chunks:
 					fmt.Println("I am getting to a processed chunk count of 10")
 					writeToFile(sortWords(collect.countsMap), "output/results.txt", collect.countsMap)
 				}
@@ -105,7 +110,7 @@ func handleConnection(c net.Conn, ALLdata [10][]string, collectP *SafeMap) { //a
 				fmt.Println("SENT DONE after worker said ok map")
 				c.Write([]byte("done" + "\n")) //Tell the worker that there are no more chunks to be processed
 				//if all chunks are processed, print results
-				if numDONE == 10 {
+				if readyToPrint {
 					fmt.Println("I am getting to a processed chunk count of 10")
 					writeToFile(sortWords(collect.countsMap), "output/results.txt", collect.countsMap)
 				}
@@ -113,7 +118,9 @@ func handleConnection(c net.Conn, ALLdata [10][]string, collectP *SafeMap) { //a
 			}
 		} else if temp[0] == '(' { //assume we are recieving data from a mapper
 			collectWorkerOutput_bymap(&temp, &collect) //uses pointers so we don't create copies of temp and collect
-			numDONE += 1                               //Indicate that we have recieved results from another worker
+			numDONE.m.Lock()
+			numDONE.index += 1 //Indicate that we have recieved results from another worker
+			numDONE.m.Unlock()
 		} else {
 			fmt.Println("Unexpected command: " + temp)
 		}
