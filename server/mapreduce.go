@@ -61,6 +61,7 @@ func getData(ALLdata [10][]string) string {
 func handleConnection(c net.Conn, ALLdata [10][]string, collectP *SafeMap) { //add wg *sync.WaitGroup
 	fmt.Print(".")
 	collect := *collectP
+	numDONE := 0 //tracks the number of clients that have finished processing data
 	for {
 		fmt.Println("NEW SERVER FOR LOOP ITERATION")
 		var workToDo bool
@@ -95,14 +96,14 @@ func handleConnection(c net.Conn, ALLdata [10][]string, collectP *SafeMap) { //a
 				c.Write([]byte("done" + "\n")) //Tell the worker that there are no more chunks to be processed
 				//if currInd == 9 {
 				//If all chunks have ben processed, print the results
-				lastIndexProcessed.m.Lock()
-				currentChunk := lastIndexProcessed.index
-				lastIndexProcessed.m.Unlock()
-				fmt.Printf("--> chunk#%v\n", currentChunk)
-				//if currentChunk >= 9 {
-				fmt.Println("I am getting to an index count of 9")
-				writeToFile(sortWords(collect.countsMap), "output/results.txt", collect.countsMap)
-				//	}
+				//lastIndexProcessed.m.Lock()
+				//currentChunk := lastIndexProcessed.index
+				//lastIndexProcessed.m.Unlock()
+				//fmt.Printf("--> chunk#%v\n", currentChunk)
+				if numDONE == 10 {
+					fmt.Println("I am getting to a processed chunk count of 10")
+					writeToFile(sortWords(collect.countsMap), "output/results.txt", collect.countsMap)
+				}
 				//}
 				break
 			}
@@ -115,7 +116,12 @@ func handleConnection(c net.Conn, ALLdata [10][]string, collectP *SafeMap) { //a
 			} else {
 				fmt.Println("SENT DONE after worker said ok map")
 				c.Write([]byte("done" + "\n")) //Tell the worker that there are no more chunks to be processed
-				if currInd == 9 {
+				//if all chunks are processed, print results
+				if numDONE == 10 {
+					fmt.Println("I am getting to a processed chunk count of 10")
+					writeToFile(sortWords(collect.countsMap), "output/results.txt", collect.countsMap)
+				}
+				/*if currInd == 9 {
 					//If all chunks have ben processed, print the results
 					lastIndexProcessed.m.Lock()
 					currentChunk := lastIndexProcessed.index
@@ -126,10 +132,12 @@ func handleConnection(c net.Conn, ALLdata [10][]string, collectP *SafeMap) { //a
 						writeToFile(sortWords(collect.countsMap), "output/results.txt", collect.countsMap)
 					}
 				}
+				*/
 				break
 			}
 		} else if temp[0] == '(' { //assume we are recieving data from a mapper
 			collectWorkerOutput_bymap(&temp, &collect) //uses pointers so we don't create copies of temp and collect
+			numDONE += 1                               //Indicate that we have recieved results from another worker
 			//continue
 			/*} else if temp == "finished!" { //the worker tells us they are done
 			fmt.Println("SENT NEW MAP after worker said finished!")
